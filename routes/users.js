@@ -6,7 +6,7 @@ function userRoutes(db) {
   const userCollection = db.collection("users");
 
   // =============================
-  // 1. Register / Save User (Basic)
+  // 1. Register / Create User
   // =============================
   router.post("/", async (req, res) => {
     try {
@@ -14,16 +14,16 @@ function userRoutes(db) {
 
       // Check if user already exists
       const exists = await userCollection.findOne({ email: user.email });
-
       if (exists) {
-        return res.json({
+        return res.status(400).json({
           success: false,
           message: "User already exists",
         });
       }
 
-      // Default role = borrower (will update from dashboard)
+      // Default role = borrower
       user.role = user.role || "borrower";
+      user.suspended = false; // default not suspended
       user.createdAt = new Date();
 
       const result = await userCollection.insertOne(user);
@@ -34,6 +34,7 @@ function userRoutes(db) {
         id: result.insertedId,
       });
     } catch (error) {
+      console.error("Create User Error:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
@@ -44,8 +45,13 @@ function userRoutes(db) {
   router.get("/", async (req, res) => {
     try {
       const users = await userCollection.find().toArray();
-      res.json(users);
+      res.json({
+        success: true,
+        count: users.length,
+        users,
+      });
     } catch (error) {
+      console.error("Fetch Users Error:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
@@ -56,17 +62,21 @@ function userRoutes(db) {
   router.get("/:email", async (req, res) => {
     try {
       const email = req.params.email;
-
       const user = await userCollection.findOne({ email });
 
-      res.json(user);
+      if (!user) {
+        return res.status(404).json({ success: false, error: "User not found" });
+      }
+
+      res.json({ success: true, user });
     } catch (error) {
+      console.error("Get User Error:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
 
   // =============================
-  // 4. Update User Role (Admin)
+  // 4. Update User Role
   // =============================
   router.patch("/role/:id", async (req, res) => {
     try {
@@ -84,6 +94,31 @@ function userRoutes(db) {
         result,
       });
     } catch (error) {
+      console.error("Update User Role Error:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // =============================
+  // 5. Update / Suspend User
+  // =============================
+  router.patch("/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      const updateData = req.body; // e.g., { suspended: true, reason: "Violation" }
+
+      const result = await userCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateData }
+      );
+
+      res.json({
+        success: true,
+        message: "User updated successfully",
+        result,
+      });
+    } catch (error) {
+      console.error("Update User Error:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
