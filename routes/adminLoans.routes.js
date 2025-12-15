@@ -1,48 +1,104 @@
 const express = require("express");
-const router = express.Router();
 const { ObjectId } = require("mongodb");
-const verifyJWT = require("../middlewares/verifyJWT");
-const verifyAdmin = require("../middlewares/verifyAdmin");
+const verifyToken = require("../middleware/verifyToken");
 
-// 🔹 Get all loans
-router.get("/all-loans", verifyJWT, verifyAdmin, async (req, res) => {
-  const loansCollection = req.app.locals.loansCollection;
-  const result = await loansCollection.find().toArray();
-  res.send(result);
-});
+const router = express.Router();
 
-// 🔹 Toggle showOnHome
-router.patch("/loan/show-home/:id", verifyJWT, verifyAdmin, async (req, res) => {
-  const loansCollection = req.app.locals.loansCollection;
-  const { showOnHome } = req.body;
+// =======================
+// ADMIN GUARD
+// =======================
+const verifyAdmin = (req, res, next) => {
+  if (req.user?.role === "admin") return next();
+  return res.status(403).json({ message: "Admins only" });
+};
 
-  const result = await loansCollection.updateOne(
-    { _id: new ObjectId(req.params.id) },
-    { $set: { showOnHome } }
-  );
+module.exports = (db) => {
+  const loansCollection = db.collection("loans");
+  const applicationsCollection = db.collection("loanApplications");
 
-  res.send(result);
-});
-
-// 🔹 Update loan
-router.patch("/loan/update/:id", verifyJWT, verifyAdmin, async (req, res) => {
-  const loansCollection = req.app.locals.loansCollection;
-
-  const result = await loansCollection.updateOne(
-    { _id: new ObjectId(req.params.id) },
-    { $set: req.body }
-  );
-
-  res.send(result);
-});
-
-// 🔹 Delete loan
-router.delete("/loan/:id", verifyJWT, verifyAdmin, async (req, res) => {
-  const loansCollection = req.app.locals.loansCollection;
-  const result = await loansCollection.deleteOne({
-    _id: new ObjectId(req.params.id),
+  // =======================
+  // GET ALL LOANS
+  // =======================
+  router.get("/all-loans", verifyToken, verifyAdmin, async (req, res) => {
+    const loans = await loansCollection.find().toArray();
+    res.send(loans);
   });
-  res.send(result);
-});
 
-module.exports = router;
+  // =======================
+  // TOGGLE SHOW ON HOME
+  // =======================
+  router.patch(
+    "/loan/show-home/:id",
+    verifyToken,
+    verifyAdmin,
+    async (req, res) => {
+      const { showOnHome } = req.body;
+
+      const result = await loansCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { showOnHome } }
+      );
+
+      res.send(result);
+    }
+  );
+
+  // =======================
+  // UPDATE LOAN
+  // =======================
+  router.patch(
+    "/loan/update/:id",
+    verifyToken,
+    verifyAdmin,
+    async (req, res) => {
+      const result = await loansCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: req.body }
+      );
+      res.send(result);
+    }
+  );
+
+  // =======================
+  // DELETE LOAN
+  // =======================
+  router.delete(
+    "/loan/:id",
+    verifyToken,
+    verifyAdmin,
+    async (req, res) => {
+      const result = await loansCollection.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
+    }
+  );
+
+  // =======================
+  // GET LOAN APPLICATIONS (ADMIN)
+  // =======================
+  router.get(
+    "/loan-applications",
+    verifyToken,
+    verifyAdmin,
+    async (req, res) => {
+      const { status, page = 1, limit = 5 } = req.query;
+      const query = {};
+      if (status && status !== "all") query.status = status;
+
+      const skip = (page - 1) * limit;
+
+      const applications = await applicationsCollection
+        .find(query)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .toArray();
+
+      const total = await applicationsCollection.countDocuments(query);
+
+      res.send({ applications, total });
+    }
+  );
+
+  return router;
+};

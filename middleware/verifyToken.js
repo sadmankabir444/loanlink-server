@@ -1,21 +1,33 @@
 const jwt = require("jsonwebtoken");
 
 const verifyToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-
-  // Check token
-  if (!authHeader) {
-    return res.status(401).json({ message: "Access denied. No token provided." });
-  }
-
-  const token = authHeader.split(" ")[1];
-
   try {
-    const decoded = jwt.verify(token, "SECRET_KEY_123"); // later env file e diba
-    req.user = decoded;
-    next();
+    // 🔐 Read token from HTTP-only cookie
+    const token = req.cookies?.token;
+
+    if (!token) {
+      return res.status(401).json({
+        message: "Unauthorized access. No token provided.",
+      });
+    }
+
+    // 🔍 Verify JWT token
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(403).json({
+          message: "Forbidden. Invalid or expired token.",
+        });
+      }
+
+      // ✅ Attach decoded user info to request
+      req.user = decoded;
+      next();
+    });
   } catch (error) {
-    return res.status(403).json({ message: "Invalid or expired token." });
+    console.error("verifyToken error:", error);
+    res.status(500).json({
+      message: "Internal server error during token verification",
+    });
   }
 };
 

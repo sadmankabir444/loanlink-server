@@ -1,66 +1,75 @@
 const express = require("express");
 const router = express.Router();
-const verifyJWT = require("../middlewares/verifyJWT");
-const verifyManager = require("../middlewares/verifyManager");
 const { ObjectId } = require("mongodb");
+const verifyToken = require("../middleware/verifyToken"); // ✅ correct existing file
 
-// ➕ Add Loan (already added)
-router.post("/add-loan", verifyJWT, verifyManager, async (req, res) => {
-  const loansCollection = req.app.locals.loansCollection;
+// ✅ inline manager middleware (verifyManager.js নাই বলে)
+const verifyManager = (req, res, next) => {
+  if (req.user && (req.user.role === "manager" || req.user.role === "admin")) {
+    return next();
+  }
+  return res.status(403).json({ message: "Forbidden: Manager access only" });
+};
 
-  const loan = {
-    ...req.body,
-    interest: Number(req.body.interest),
-    maxAmount: Number(req.body.maxAmount),
-    createdBy: {
-      email: req.user.email,
-      role: "manager",
-    },
-    createdAt: new Date(),
-  };
+module.exports = (db) => {
+  const applicationsCollection = db.collection("loanApplications");
 
-  const result = await loansCollection.insertOne(loan);
-  res.send({ success: true, insertedId: result.insertedId });
-});
+  // =============================
+  // GET PENDING APPLICATIONS
+  // =============================
+  router.get(
+    "/pending-applications",
+    verifyToken,
+    verifyManager,
+    async (req, res) => {
+      const applications = await applicationsCollection
+        .find({ status: "Pending" })
+        .toArray();
 
-// 📥 Get manager's loans
-router.get("/my-loans", verifyJWT, verifyManager, async (req, res) => {
-  const loansCollection = req.app.locals.loansCollection;
-
-  const result = await loansCollection
-    .find({ "createdBy.email": req.user.email })
-    .toArray();
-
-  res.send(result);
-});
-
-// ✏️ Update loan
-router.patch("/update-loan/:id", verifyJWT, verifyManager, async (req, res) => {
-  const loansCollection = req.app.locals.loansCollection;
-  const { id } = req.params;
-
-  const updateDoc = {
-    $set: req.body,
-  };
-
-  const result = await loansCollection.updateOne(
-    { _id: new ObjectId(id) },
-    updateDoc
+      res.send(applications);
+    }
   );
 
-  res.send(result);
-});
+  // =============================
+  // GET APPROVED APPLICATIONS
+  // =============================
+  router.get(
+    "/approved-applications",
+    verifyToken,
+    verifyManager,
+    async (req, res) => {
+      const applications = await applicationsCollection
+        .find({ status: "Approved" })
+        .toArray();
 
-// 🗑️ Delete loan
-router.delete("/delete-loan/:id", verifyJWT, verifyManager, async (req, res) => {
-  const loansCollection = req.app.locals.loansCollection;
-  const { id } = req.params;
+      res.send(applications);
+    }
+  );
 
-  const result = await loansCollection.deleteOne({
-    _id: new ObjectId(id),
-  });
+  // =============================
+  // UPDATE APPLICATION STATUS
+  // =============================
+  router.patch(
+    "/application-status/:id",
+    verifyToken,
+    verifyManager,
+    async (req, res) => {
+      const { status, feedback } = req.body;
 
-  res.send(result);
-});
+      const result = await applicationsCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        {
+          $set: {
+            status,
+            managerFeedback: feedback || "",
+            updatedAt: new Date(),
+          },
+        }
+      );
 
-module.exports = router;
+      res.send(result);
+    }
+  );
+
+  return router;
+};
