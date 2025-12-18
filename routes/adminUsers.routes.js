@@ -1,20 +1,21 @@
 const express = require("express");
 const router = express.Router();
 const { ObjectId } = require("mongodb");
-const verifyJWT = require("../middleware/verifyToken"); 
 
+// ✅ verifyToken MUST be a function
+const verifyJWT = require("../middleware/verifyToken");
 
+// 🔐 Admin role guard
 const verifyAdmin = (req, res, next) => {
-  
   if (req.user && req.user.role === "admin") {
     return next();
   }
   return res.status(403).json({ message: "Forbidden: Admins only" });
 };
 
-
+// ============================
 // GET all users
-
+// ============================
 router.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
   const usersCollection = req.app.locals.usersCollection;
   const search = req.query.search || "";
@@ -30,8 +31,9 @@ router.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
   res.send(users);
 });
 
+// ============================
 // Update user role
-
+// ============================
 router.patch("/users/role/:id", verifyJWT, verifyAdmin, async (req, res) => {
   const usersCollection = req.app.locals.usersCollection;
   const { role } = req.body;
@@ -44,9 +46,9 @@ router.patch("/users/role/:id", verifyJWT, verifyAdmin, async (req, res) => {
   res.send(result);
 });
 
-
+// ============================
 // Suspend user
-
+// ============================
 router.patch("/users/suspend/:id", verifyJWT, verifyAdmin, async (req, res) => {
   const usersCollection = req.app.locals.usersCollection;
   const { reason, feedback } = req.body;
@@ -65,9 +67,9 @@ router.patch("/users/suspend/:id", verifyJWT, verifyAdmin, async (req, res) => {
   res.send(result);
 });
 
-
+// ============================
 // Activate user
-
+// ============================
 router.patch("/users/activate/:id", verifyJWT, verifyAdmin, async (req, res) => {
   const usersCollection = req.app.locals.usersCollection;
 
@@ -79,23 +81,26 @@ router.patch("/users/activate/:id", verifyJWT, verifyAdmin, async (req, res) => 
   res.send(result);
 });
 
-
+// ============================
 // Delete user
-
+// ============================
 router.delete("/users/:id", verifyJWT, verifyAdmin, async (req, res) => {
   const usersCollection = req.app.locals.usersCollection;
 
   try {
-    const result = await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+    const result = await usersCollection.deleteOne({
+      _id: new ObjectId(req.params.id),
+    });
+
     if (result.deletedCount === 0) {
       return res.status(404).json({ message: "User not found" });
     }
+
     res.json({ message: "User deleted successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to delete user" });
   }
 });
-
 
 module.exports = router;
